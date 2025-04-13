@@ -13,34 +13,42 @@ app.listen(PORT, () => {
     console.log(`Servidor corriendo en puerto ${PORT}`);
 });
 
-
-// API para registrar una persona
-app.post('/api/registro', async (req, res) => {
+// Crear persona
+app.post('/api/personas', async (req, res) => {
     const { nombre, apellido1, apellido2, dni } = req.body;
     if (!nombre || !apellido1 || !apellido2 || !dni) {
-        return res.status(400).json({
-            message: 'Todos los campos son obligatorios: nombre, apellido1, apellido2, dni.'
-        });
+      return res.status(400).json({
+        message: 'Todos los campos son obligatorios: nombre, apellido1, apellido2, dni.'
+      });
     }
-
-    const query = 'INSERT INTO Persona (nombre, apellido1, apellido2, dni) VALUES ($1, $2, $3, $4)';
-
     try {
-        await client.query(query, [nombre, apellido1, apellido2, dni]);
-        res.status(201).json({
-            message: 'Persona registrada exitosamente',
-            data: { nombre, apellido1, apellido2, dni }
+      const result = await client.query(
+        'INSERT INTO Persona (nombre, apellido1, apellido2, dni) VALUES ($1, $2, $3, $4) RETURNING *',
+        [nombre, apellido1, apellido2, dni]
+      );
+  
+      res.status(201).json({
+        message: 'Persona registrada exitosamente',
+        data: result.rows[0]
+      });
+    } catch (err) {
+    
+      if (err.code === '23505') {
+        return res.status(409).json({
+          message: 'El DNI ya está registrado.',
+          detalle: err.detail
         });
-    } catch (error) {
-        console.error('Error al registrar persona:', error.message);
-        res.status(500).json({
-            message: 'Error al crear la persona',
-            error: error.message
-        });
+      }
+      res.status(500).json({
+        message: 'Error al crear la persona',
+        error: err.message
+      });
     }
-});
- //obtener todas las peronas
- app.get('/api/personas', async (req, res) => {
+  });
+  
+
+// Obtener todas las personas
+app.get('/api/personas', async (req, res) => {
     try {
         const result = await client.query('SELECT * FROM Persona');
         res.status(200).json(result.rows);
@@ -48,32 +56,57 @@ app.post('/api/registro', async (req, res) => {
         res.status(500).json({ message: 'Error al obtener las personas', error: error.message });
     }
 });
-//actializar persona
-app.get('/api/persona/:id', async (req, res) => {
+
+//modificar persona
+app.put('/api/personas/:id', async (req, res) => {
+    const { id } = req.params;
+    const { nombre, apellido1, apellido2, dni } = req.body;
+  
+    try {
+      const result = await client.query(
+        `UPDATE persona 
+         SET nombre = $1, apellido1 = $2, apellido2 = $3, dni = $4 
+         WHERE id = $5 
+         RETURNING *`,
+        [nombre, apellido1, apellido2, dni, id]
+      );
+  
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: 'Persona no encontrada.' });
+      }
+  
+      res.status(200).json(result.rows[0]);
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({
+          message: 'Ya existe una persona con ese DNI.',
+          detalle: err.detail
+        });
+      }
+  
+      res.status(500).json({ message: 'Error al actualizar la persona', error: err.message });
+    }
+  });
+  
+// Eliminar persona
+app.delete('/api/personas/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await client.query('SELECT * FROM Persona WHERE id = $1', [id]);
-        if (result.rows.length === 0) {
+        const result = await client.query('DELETE FROM Persona WHERE id = $1', [id]);
+
+        if (result.rowCount === 0) {
             return res.status(404).json({ message: 'Persona no encontrada' });
         }
-        res.status(200).json(result.rows[0]);
-    } catch (error) {
-        res.status(500).json({ message: 'Error al obtener la persona', error: error.message });
-    }
-});
 
-//eliminar persona
-app.delete('/api/persona/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        await client.query('DELETE FROM Persona WHERE id = $1', [id]);
         res.status(200).json({ message: 'Persona eliminada correctamente' });
     } catch (error) {
         res.status(500).json({ message: 'Error al eliminar la persona', error: error.message });
     }
 });
 
-//crear coche
+
+
+// Crear coche
 app.post('/api/coche', async (req, res) => {
     const { matricula, marca, modelo, caballos, persona_id } = req.body;
     const query = 'INSERT INTO Coche (matricula, marca, modelo, caballos, persona_id) VALUES ($1, $2, $3, $4, $5)';
@@ -85,8 +118,9 @@ app.post('/api/coche', async (req, res) => {
         res.status(500).json({ message: 'Error al registrar el coche', error: error.message });
     }
 });
-//obtener todos los carros
-app.get('/api/coches', async (req, res) => {
+
+// Obtener todos los coches
+app.get('/api/coche', async (req, res) => {
     try {
         const result = await client.query('SELECT * FROM Coche');
         res.status(200).json(result.rows);
@@ -95,7 +129,8 @@ app.get('/api/coches', async (req, res) => {
     }
 });
 
-//actualizar todos carro
+
+// Actualizar coche por matrícula
 app.put('/api/coche/:matricula', async (req, res) => {
     const { matricula } = req.params;
     const { marca, modelo, caballos, persona_id } = req.body;
@@ -108,7 +143,8 @@ app.put('/api/coche/:matricula', async (req, res) => {
         res.status(500).json({ message: 'Error al actualizar el coche', error: error.message });
     }
 });
-//eliminar carro
+
+// Eliminar coche por matrícula
 app.delete('/api/coche/:matricula', async (req, res) => {
     const { matricula } = req.params;
     try {
@@ -118,5 +154,3 @@ app.delete('/api/coche/:matricula', async (req, res) => {
         res.status(500).json({ message: 'Error al eliminar el coche', error: error.message });
     }
 });
-
-
